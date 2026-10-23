@@ -1,8 +1,9 @@
 <?php
+session_start();
+
 require_once __DIR__ . "/Database.php";
 require_once __DIR__ . "/User.php";
-
-
+require_once __DIR__ . "/Appointment.php";
 
 header("Content-Type: application/json; charset=UTF-8");
 
@@ -10,6 +11,7 @@ $database = new Database() ;
 $conn = $database->connect();
 
 $userModel = new User($conn) ;
+$appointmentModel = new Appointment($conn);
 
 $action = $_GET["action"] ?? "";
 
@@ -51,7 +53,7 @@ try {
 
         $user = $userModel->login($email, $password);
 
-        if (!user) {
+        if (!$user) {
             http_response_code(401);
             echo json_encode(["error" => "Invalid credentials"]);
             exit;
@@ -65,19 +67,122 @@ try {
             "message" => "Login successful",
             "user" => $user
         ]);
-    } else {
+    }
+elseif ($action === "services" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    echo json_encode($appointmentModel->getServices());
+
+} elseif ($action === "slots" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    echo json_encode($appointmentModel->getAvailableSlots());
+
+} elseif ($action === "book" && $_SERVER["REQUEST_METHOD"] === "POST") {
+    if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] ?? "") !== "patient") {
+        http_response_code(403);
+        echo json_encode(["error" => "Patient access required"]);
+        exit;
+    }
+
+    $serviceId = filter_var($input["service_id"] ?? null, FILTER_VALIDATE_INT);
+    $slotId = filter_var($input["slot_id"] ?? null, FILTER_VALIDATE_INT);
+
+    if (!$serviceId || !$slotId) {
+        http_response_code(422);
+        echo json_encode(["error" => "Invalid service or slot"]);
+        exit;
+    }
+
+    $appointmentModel->book((int)$_SESSION["user_id"], $serviceId, $slotId);
+
+    http_response_code(201);
+    echo json_encode(["message" => "Appointment booked successfully"]);
+
+} elseif ($action === "my-appointments" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] ?? "") !== "patient") {
+        http_response_code(403);
+        echo json_encode(["error" => "Patient access required"]);
+        exit;
+    }
+
+    echo json_encode(
+        $appointmentModel->getByPatient((int)$_SESSION["user_id"])
+    );
+
+} elseif ($action === "cancel" && $_SERVER["REQUEST_METHOD"] === "POST") {
+    if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] ?? "") !== "patient") {
+        http_response_code(403);
+        echo json_encode(["error" => "Patient access required"]);
+        exit;
+    }
+
+    $appointmentId = filter_var($input["appointment_id"] ?? null, FILTER_VALIDATE_INT);
+
+    if (!$appointmentId) {
+        http_response_code(422);
+        echo json_encode(["error" => "Invalid appointment ID"]);
+        exit;
+    }
+
+    $cancelled = $appointmentModel->cancel(
+        $appointmentId,
+        (int)$_SESSION["user_id"]
+    );
+
+    if (!$cancelled) {
+        http_response_code(409);
+        echo json_encode(["error" => "Appointment cannot be cancelled"]);
+        exit;
+    }
+
+    echo json_encode(["message" => "Appointment cancelled successfully"]);
+}elseif ($action === "me" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    if (!isset($_SESSION["user_id"])) {
+        http_response_code(401);
+        echo json_encode(["error" => "Unauthenticated"]);
+        exit;
+    }
+
+    $stmt = $conn->prepare(
+        "SELECT id, name, email, role FROM users WHERE id = :id"
+    );
+
+    $stmt->execute(["id" => $_SESSION["user_id"]]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        http_response_code(401);
+        echo json_encode(["error" => "User not found"]);
+        exit;
+    }
+
+    echo json_encode(["user" => $user]);
+}
+
+     else {
         http_response_code(404);
         echo json_encode(["error" => "Action not found"]);
     }
-}catch (PDOException $e) {
-    if ($e->getCode() === "23000" && $action === "register") {
-        http_response_code(409);
-        echo json_encode(["error" => "Email already exists"]);
-    } else {
-        error_log($e->getMessage());
-        http_response_code(500);
-        echo json_encode(["error" => "Server error"]);
-    }
+} catch (InvalidArgumentException $e) {
+    http_response_code(422);
+    echo json_encode(["error" => $e->getMessage()]);
 
+} catch (PDOException $e) {
+    $mysqlError = $e->errorInfo[1] ?? null;
+
+    if ($mysqlError === 1062) {
+        http_response_code(409);
+        echo json_encode([
+            "error" => $action === "register"
+                ? "Email already exists"
+                : "Slot already booked"
+        ]);
+    } else {
+    http_response_code(500);
+
+    echo json_encode([
+        "error" => "Server error",
+        "details" => $e->getMessage(),
+        "sql_code" => $e->getCode()
+    ]);
 }
+}
+
 ?>

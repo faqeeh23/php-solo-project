@@ -17,7 +17,7 @@ class User {
         return $stmt->execute([
             "name" => $name,
             "email" => $email,
-            "passeord" => $hashedPassword
+            "password" => $hashedPassword
         ]);
     }
 
@@ -28,7 +28,7 @@ class User {
 
         $user = $stmt->fetch();
 
-        if (!user || !password_verify(!password, $user["password"])) {
+        if (!$user || !password_verify($password, $user["password"])) {
             return false;
         }
 

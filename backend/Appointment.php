@@ -25,10 +25,10 @@ class Appointment {
     }
 
     public function getServices(): array {
-        retutn $this->conn->query("SELECT * FROM services ORDAR BY id")->fetchALl();
-    }
+    return $this->conn->query("SELECT * FROM services ORDER BY id")->fetchAll();
+}
 
-    public function book(int $patienId , int $serviceId, int $slotId) : bool {
+    public function book(int $patientId , int $serviceId, int $slotId) : bool {
         $sql = "SELECT s.id, s.slot_date, s.start_time, s.end_time,
                        sv.duration_minutes
                 FROM appointment_slots s
@@ -39,7 +39,7 @@ class Appointment {
         $stmt->execute([
             "service_id" => $serviceId,
             "slot_id" => $slotId
-        ]) ;
+        ]);
 
         $slot = $stmt->fetch();
 
@@ -48,9 +48,9 @@ class Appointment {
 
         }
 
-        $start = new DataTimeImmutable($slot["slot_date"] . " " . $slot["end_time"]);
+        $start = new DateTimeImmutable($slot["slot_date"] . " " . $slot["start_time"]);
 
-        $end = new DataTimeImmutable($slot["slot_date"] . " " . $slot["end_time"]);
+        $end = new DateTimeImmutable($slot["slot_date"] . " " . $slot["end_time"]);
 
          if ($start <= new DateTimeImmutable()) {
             throw new InvalidArgumentException("Slot is in the past");
@@ -67,7 +67,7 @@ class Appointment {
 
         $stmt = $this->conn->prepare($sql);
 
-        return $stmt->execute([
+        return $$stmt->execute([
             "patient_id" => $patientId,
             "service_id" => $serviceId,
             "slot_id" => $slotId
