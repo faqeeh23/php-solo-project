@@ -156,6 +156,51 @@ elseif ($action === "services" && $_SERVER["REQUEST_METHOD"] === "GET") {
     echo json_encode(["user" => $user]);
 }
 
+elseif ($action === "doctor-appointments" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] ?? "") !== "doctor") {
+        http_response_code(403);
+        echo json_encode(["error" => "Doctor access required"]);
+        exit;
+    }
+
+    echo json_encode(
+        $appointmentModel->getByDoctor((int)$_SESSION["user_id"])
+    );
+
+} elseif ($action === "doctor-update" && $_SERVER["REQUEST_METHOD"] === "POST") {
+    if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] ?? "") !== "doctor") {
+        http_response_code(403);
+        echo json_encode(["error" => "Doctor access required"]);
+        exit;
+    }
+
+    $appointmentId = filter_var(
+        $input["appointment_id"] ?? null,
+        FILTER_VALIDATE_INT
+    );
+
+    $status = $input["status"] ?? "";
+
+    if (!$appointmentId || $appointmentId < 1 || !in_array($status, ["confirmed", "completed"], true)) {
+        http_response_code(422);
+        echo json_encode(["error" => "Invalid appointment data"]);
+        exit;
+    }
+
+    $updated = $appointmentModel->updateDoctorStatus(
+        (int)$appointmentId,
+        (int)$_SESSION["user_id"],
+        $status
+    );
+
+    if (!$updated) {
+        http_response_code(409);
+        echo json_encode(["error" => "Cannot update this appointment"]);
+        exit;
+    }
+
+    echo json_encode(["message" => "Appointment updated successfully"]);
+}
      else {
         http_response_code(404);
         echo json_encode(["error" => "Action not found"]);

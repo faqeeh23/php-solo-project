@@ -2,9 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Login from "./pages/Login";
 import Patient from "./pages/Patient";
 import Register from "./pages/Register";
-function Doctor() {
-  return <h1>Doctor Dashboard</h1>;
-}
+import Doctor from "./pages/Doctor";
 
 function Admin() {
   return <h1>Admin Dashboard</h1>;
