@@ -32,93 +32,18 @@ class Admin {
         return $this->conn->query($sql)->fetchAll();
     }
 
-    public function addSlot(
-        int $doctorId,
-        string $date,
-        string $startTime,
-        string $endTime
-    ): bool {
-        $start = DateTimeImmutable::createFromFormat(
-            '!Y-m-d H:i',
-            "$date $startTime"
-        );
-
-        $end = DateTimeImmutable::createFromFormat(
-            '!Y-m-d H:i',
-            "$date $endTime"
-        );
-
-        if (!$start || !$end || $start->format("Y-m-d H:i") !== "$date $startTime" || $end->format("Y-m-d H:i") !== "$date $endTime" || $start <= new DateTimeImmutable() || $end <= $start) {
-            throw new InvalidArgumentException("Invalid appointment time");
-        }
-
-        $this->conn->beginTransaction();
-
-        try {
-            // Lock the doctor record to serialize slot creation.
-            $stmt = $this->conn->prepare(
-                "SELECT id FROM users
-                 WHERE id = :id AND role = 'doctor'
-                 FOR UPDATE"
-            );
-            $stmt->execute(["id" => $doctorId]);
-
-            if (!$stmt->fetch()) {
-                throw new InvalidArgumentException("Doctor not found");
-            }
-
-            $stmt = $this->conn->prepare(
-                "SELECT COUNT(*) FROM appointment_slots
-                 WHERE doctor_id = :doctor_id
-                   AND slot_date = :slot_date
-                   AND start_time < :end_time
-                   AND end_time > :start_time"
-            );
-
-            $stmt->execute([
-                "doctor_id" => $doctorId,
-                "slot_date" => $date,
-                "start_time" => $startTime,
-                "end_time" => $endTime
-            ]);
-
-            if ((int)$stmt->fetchColumn() > 0) {
-                throw new InvalidArgumentException("Slot overlaps another slot");
-            }
-
-            $stmt = $this->conn->prepare(
-                "INSERT INTO appointment_slots
-                 (doctor_id, slot_date, start_time, end_time)
-                 VALUES (:doctor_id, :slot_date, :start_time, :end_time)"
-            );
-
-            $saved = $stmt->execute([
-                "doctor_id" => $doctorId,
-                "slot_date" => $date,
-                "start_time" => $startTime,
-                "end_time" => $endTime
-            ]);
-
-            $this->conn->commit();
-            return $saved;
-        } catch (Throwable $e) {
-            $this->conn->rollBack();
-            throw $e;
-        }
-    }
-
     public function updateAppointment(
         int $appointmentId,
         string $status
     ): bool {
-        if (!in_array($status, ["confirmed", "cancelled"], true)) {
+        if (!in_array($status, ["cancelled"], true)) {
             throw new InvalidArgumentException("Invalid status");
         }
 
         $sql = "UPDATE appointments
                 SET status = :new_status
                 WHERE id = :id
-                  AND status = 'pending'";
+                  AND status IN ('pending', 'confirmed') AND EXISTS (SELECT 1 FROM appointment_slots s WHERE s.id = appointments.slot_id AND TIMESTAMP(s.slot_date, s.start_time) > NOW())";
 
         $stmt = $this->conn->prepare($sql);
 

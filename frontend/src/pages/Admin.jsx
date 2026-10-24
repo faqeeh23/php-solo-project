@@ -5,15 +5,7 @@ import "../style/patient.css";
 export default function Admin() {
   const [doctors, setDoctors] = useState([]);
   const [appointments, setAppointments] = useState([]);
-  const [form, setForm] = useState({
-    doctor_id: "",
-    slot_date: "",
-    start_time: "",
-    end_time: ""
-  });
-
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -41,41 +33,6 @@ export default function Admin() {
 
     initialize();
   }, []);
-
-  function handleChange(e) {
-    setForm(prev => ({
-      ...prev,
-      [e.target.name]: e.target.value
-    }));
-  }
-
-  async function handleAddSlot(e) {
-    e.preventDefault();
-    setError("");
-    setMessage("");
-    setSaving(true);
-
-    try {
-      await apiRequest("admin-add-slot", "POST", {
-        ...form,
-        doctor_id: Number(form.doctor_id)
-      });
-
-      setMessage("Slot created successfully!");
-      setForm({
-        doctor_id: "",
-        slot_date: "",
-        start_time: "",
-        end_time: ""
-      });
-
-      await loadData();
-    } catch (err) {
-      setError(err.message);
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function updateStatus(id, status) {
     setError("");
@@ -109,7 +66,7 @@ export default function Admin() {
     <main className="patient-page">
       <header className="patient-header">
         <h1>Admin Dashboard</h1>
-        <p>Manage doctors, appointments and time slots</p>
+        <p>Monitor doctors and appointments</p>
       </header>
 
       {message && <p className="success-message" role="status">{message}</p>}
@@ -157,63 +114,6 @@ export default function Admin() {
           </section>
 
           <section className="patient-section">
-            <h2>Add Available Slot</h2>
-
-            <form className="booking-form" onSubmit={handleAddSlot}>
-              <label htmlFor="doctor_id">Doctor</label>
-
-              <select
-                id="doctor_id"
-                name="doctor_id"
-                value={form.doctor_id}
-                onChange={handleChange}
-                required
-              >
-                <option value="">Select doctor</option>
-                {doctors.map(doctor => (
-                  <option value={doctor.id} key={doctor.id}>
-                    {doctor.name}
-                  </option>
-                ))}
-              </select>
-
-              <label htmlFor="slot_date">Date</label>
-              <input
-                id="slot_date"
-                type="date"
-                name="slot_date"
-                value={form.slot_date}
-                onChange={handleChange}
-                required
-              />
-
-              <label htmlFor="start_time">Start Time</label>
-              <input
-                id="start_time"
-                type="time"
-                name="start_time"
-                value={form.start_time}
-                onChange={handleChange}
-                required
-              />
-
-              <label htmlFor="end_time">End Time</label>
-              <input
-                id="end_time"
-                type="time"
-                name="end_time"
-                value={form.end_time}
-                onChange={handleChange}
-                required
-              />
-
-              <button type="submit" disabled={saving}>
-                {saving ? "Saving..." : "Add Slot"}
-              </button>
-            </form>
-          </section>
-
-          <section className="patient-section">
             <h2>All Appointments</h2>
 
             {appointments.length === 0 ? (
@@ -238,15 +138,8 @@ export default function Admin() {
                       </span>
                     </div>
 
-                    {appointment.status === "pending" && (
+                    {["pending", "confirmed"].includes(appointment.status) && new Date(appointment.slot_date + "T" + appointment.start_time) > new Date() && (
                       <div className="doctor-actions">
-                        <button
-                          disabled={updatingId !== null}
-                          onClick={() => updateStatus(appointment.id, "confirmed")}
-                        >
-                          Confirm
-                        </button>
-
                         <button
                           className="cancel-btn"
                           disabled={updatingId !== null}
