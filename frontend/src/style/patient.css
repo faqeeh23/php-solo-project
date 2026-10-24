@@ -194,3 +194,38 @@
   background: #dbeafe;
   color: #1d4ed8;
 }
+
+.booking-form input {
+  width: 100%;
+  padding: 13px;
+  border: 1px solid #ccd8e0;
+  border-radius: 9px;
+  background: white;
+  font: inherit;
+}
+
+.doctor-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.doctor-actions button {
+  padding: 11px 16px;
+  border: 0;
+  border-radius: 8px;
+  background: #167ba3;
+  color: white;
+  cursor: pointer;
+}
+
+.doctor-actions .cancel-btn {
+  background: #fff;
+  color: #dc2626;
+  border: 1px solid #ef4444;
+}
+
+.doctor-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

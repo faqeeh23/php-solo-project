@@ -4,6 +4,7 @@ session_start();
 require_once __DIR__ . "/Database.php";
 require_once __DIR__ . "/User.php";
 require_once __DIR__ . "/Appointment.php";
+require_once __DIR__ . "/Admin.php";
 
 header("Content-Type: application/json; charset=UTF-8");
 
@@ -12,6 +13,7 @@ $conn = $database->connect();
 
 $userModel = new User($conn) ;
 $appointmentModel = new Appointment($conn);
+$adminModel = new Admin($conn);
 
 $action = $_GET["action"] ?? "";
 
@@ -200,6 +202,90 @@ elseif ($action === "doctor-appointments" && $_SERVER["REQUEST_METHOD"] === "GET
     }
 
     echo json_encode(["message" => "Appointment updated successfully"]);
+}
+elseif (
+    in_array($action, [
+        "admin-doctors",
+        "admin-appointments",
+        "admin-add-slot",
+        "admin-update"
+    ], true)
+) {
+    if (
+        !isset($_SESSION["user_id"]) ||
+        ($_SESSION["role"] ?? "") !== "admin"
+    ) {
+        http_response_code(403);
+        echo json_encode(["error" => "Admin access required"]);
+        exit;
+    }
+
+    if ($action === "admin-doctors" && $_SERVER["REQUEST_METHOD"] === "GET") {
+        echo json_encode($adminModel->getDoctors());
+
+    } elseif ($action === "admin-appointments" && $_SERVER["REQUEST_METHOD"] === "GET") {
+        echo json_encode($adminModel->getAppointments());
+
+    } elseif ($action === "admin-add-slot" && $_SERVER["REQUEST_METHOD"] === "POST") {
+        $doctorId = filter_var(
+            $input["doctor_id"] ?? null,
+            FILTER_VALIDATE_INT
+        );
+
+        $date = $input["slot_date"] ?? "";
+        $start = $input["start_time"] ?? "";
+        $end = $input["end_time"] ?? "";
+
+        if (
+            !$doctorId || $doctorId < 1 ||
+            !is_string($date) ||
+            !is_string($start) ||
+            !is_string($end) ||
+            !preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) ||
+            !preg_match('/^\d{2}:\d{2}$/', $start) ||
+            !preg_match('/^\d{2}:\d{2}$/', $end)
+        ) {
+            http_response_code(422);
+            echo json_encode(["error" => "Invalid slot data"]);
+            exit;
+        }
+
+        $adminModel->addSlot($doctorId, $date, $start, $end);
+
+        http_response_code(201);
+        echo json_encode(["message" => "Slot created successfully"]);
+
+    } elseif ($action === "admin-update" && $_SERVER["REQUEST_METHOD"] === "POST") {
+        $appointmentId = filter_var(
+            $input["appointment_id"] ?? null,
+            FILTER_VALIDATE_INT
+        );
+
+        $status = $input["status"] ?? "";
+
+        if (!$appointmentId || $appointmentId < 1 || !in_array($status, ["confirmed", "cancelled"], true)) {
+            http_response_code(422);
+            echo json_encode(["error" => "Invalid appointment data"]);
+            exit;
+        }
+
+        $updated = $adminModel->updateAppointment(
+            $appointmentId,
+            $status
+        );
+
+        if (!$updated) {
+            http_response_code(409);
+            echo json_encode(["error" => "Appointment cannot be updated"]);
+            exit;
+        }
+
+        echo json_encode(["message" => "Appointment updated successfully"]);
+
+    } else {
+        http_response_code(405);
+        echo json_encode(["error" => "Method not allowed"]);
+    }
 }
      else {
         http_response_code(404);

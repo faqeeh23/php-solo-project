@@ -4,9 +4,7 @@ import Patient from "./pages/Patient";
 import Register from "./pages/Register";
 import Doctor from "./pages/Doctor";
 
-function Admin() {
-  return <h1>Admin Dashboard</h1>;
-}
+import Admin from "./pages/Admin";
 
 
 export default function App() {
