@@ -1,5 +1,15 @@
 <?php
+ini_set("session.use_strict_mode", "1");
+session_set_cookie_params([
+    "httponly" => true,
+    "secure" => !empty($_SERVER["HTTPS"]) && $_SERVER["HTTPS"] !== "off",
+    "samesite" => "Lax"
+]);
 session_start();
+header("Cache-Control: no-store");
+if (!isset($_SESSION["csrf_token"])) {
+    $_SESSION["csrf_token"] = bin2hex(random_bytes(32));
+}
 
 require_once __DIR__ . "/Database.php";
 require_once __DIR__ . "/User.php";
@@ -8,19 +18,39 @@ require_once __DIR__ . "/Admin.php";
 
 header("Content-Type: application/json; charset=UTF-8");
 
-$database = new Database() ;
-$conn = $database->connect();
-
-$userModel = new User($conn) ;
-$appointmentModel = new Appointment($conn);
-$adminModel = new Admin($conn);
-
 $action = $_GET["action"] ?? "";
 
-$input = json_decode(file_get_contents("php://input"), true) ?? [];
+if ($action === "csrf-token" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    echo json_encode(["csrf_token" => $_SESSION["csrf_token"]]);
+    exit;
+}
+
+if (!in_array($_SERVER["REQUEST_METHOD"], ["GET", "HEAD", "OPTIONS"], true)) {
+    $token = $_SERVER["HTTP_X_CSRF_TOKEN"] ?? "";
+    if (!is_string($token) || !hash_equals($_SESSION["csrf_token"], $token)) {
+        http_response_code(403);
+        echo json_encode(["error" => "Invalid CSRF token"]);
+        exit;
+    }
+}
+
+$rawInput = file_get_contents("php://input");
+$input = $rawInput === "" ? [] : json_decode($rawInput, true);
+if (!is_array($input)) {
+    http_response_code(422);
+    echo json_encode(["error" => "Invalid JSON request"]);
+    exit;
+}
 
 
 try {
+    $database = new Database() ;
+    $conn = $database->connect();
+
+    $userModel = new User($conn) ;
+    $appointmentModel = new Appointment($conn);
+    $adminModel = new Admin($conn);
+
     // Refresh authorization before any action uses the session role.
     if (isset($_SESSION["user_id"])) {
         $stmt = $conn->prepare("SELECT role FROM users WHERE id = :id");
@@ -34,18 +64,38 @@ try {
         }
     }
 
-    if ($action === "register") {
+    if ($action === "logout" && $_SERVER["REQUEST_METHOD"] === "POST") {
+        $_SESSION = [];
+        if (ini_get("session.use_cookies")) {
+            $params = session_get_cookie_params();
+            setcookie(session_name(), "", [
+                "expires" => time() - 42000,
+                "path" => $params["path"],
+                "domain" => $params["domain"],
+                "secure" => $params["secure"],
+                "httponly" => $params["httponly"],
+                "samesite" => $params["samesite"] ?: "Lax"
+            ]);
+        }
+        session_destroy();
+        echo json_encode(["message" => "Logged out successfully"]);
+    } elseif ($action === "register") {
         if ($_SERVER["REQUEST_METHOD"] !== "POST") {
             http_response_code(405);
             echo json_encode(["error" => "Method not allowed"]);
             exit;
         }
 
-        $name = trim($input["name"] ?? "");
-        $email = trim($input["email"] ?? "");
+        $name = $input["name"] ?? "";
+        $email = $input["email"] ?? "";
         $password = $input["password"] ?? "";
+        if (!is_string($name) || !is_string($email) || !is_string($password)) {
+            throw new InvalidArgumentException("Invalid registration data");
+        }
+        $name = trim($name);
+        $email = trim($email);
 
-        if ($name === "" || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8) {
+        if ($name === "" || mb_strlen($name) > 100 || strlen($email) > 150 || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8 || strlen($password) > 72) {
             http_response_code(422);
             echo json_encode(["error" => "Invalid registeration data"]);
             exit;
@@ -63,8 +113,12 @@ try {
             exit;
         }
 
-        $email = trim($input["email"] ?? "");
+        $email = $input["email"] ?? "";
         $password = $input["password"] ?? "";
+        if (!is_string($email) || !is_string($password)) {
+            throw new InvalidArgumentException("Invalid login data");
+        }
+        $email = trim($email);
 
         $user = $userModel->login($email, $password);
 
@@ -261,6 +315,7 @@ elseif (in_array($action, ["doctor-add-slot", "doctor-slots", "doctor-delete-slo
 elseif (
     in_array($action, [
         "admin-doctors",
+        "admin-add-doctor",
         "admin-appointments",
         "admin-update"
     ], true)
@@ -274,7 +329,19 @@ elseif (
         exit;
     }
 
-    if ($action === "admin-doctors" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    if ($action === "admin-add-doctor" && $_SERVER["REQUEST_METHOD"] === "POST") {
+        $name = $input["name"] ?? null;
+        $email = $input["email"] ?? null;
+        $password = $input["password"] ?? null;
+        if (!is_string($name) || !is_string($email) || !is_string($password)) {
+            http_response_code(422);
+            echo json_encode(["error" => "Invalid doctor data"]);
+            exit;
+        }
+        $adminModel->addDoctor($name, $email, $password);
+        http_response_code(201);
+        echo json_encode(["message" => "Doctor account created successfully"]);
+    } elseif ($action === "admin-doctors" && $_SERVER["REQUEST_METHOD"] === "GET") {
         echo json_encode($adminModel->getDoctors());
 
     } elseif ($action === "admin-appointments" && $_SERVER["REQUEST_METHOD"] === "GET") {
@@ -326,18 +393,15 @@ elseif (
     if ($mysqlError === 1062) {
         http_response_code(409);
         echo json_encode([
-            "error" => $action === "register"
+            "error" => in_array($action, ["register", "admin-add-doctor"], true)
                 ? "Email already exists"
                 : "Slot already booked"
         ]);
     } else {
     http_response_code(500);
 
-    echo json_encode([
-        "error" => "Server error",
-        "details" => $e->getMessage(),
-        "sql_code" => $e->getCode()
-    ]);
+    error_log($e->getMessage());
+    echo json_encode(["error" => "Server error"]);
 }
 }
 

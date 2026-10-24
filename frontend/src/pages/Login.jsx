@@ -1,10 +1,12 @@
 
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { apiRequest } from "../services/api";
+import AuthIntro from "../components/AuthIntro";
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [form, setForm] = useState({
     email: "",
@@ -13,6 +15,7 @@ export default function Login() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   function handleChange(e) {
     setForm(prev => ({
@@ -36,35 +39,41 @@ export default function Login() {
 
     } catch (err) {
       setError(err.message);
-      console.log("Login email:", form.email);
-console.log("Password length:", form.password.length);
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="auth-page">
+    <main className="auth-page">
+      <AuthIntro />
       <form className="auth-card" onSubmit={handleSubmit}>
+        <span className="eyebrow">Good to see you again</span>
         <h1>Welcome Back</h1>
-        <p>Login to manage your dental appointments.</p>
+        <p>Sign in to make a little time for your smile.</p>
+        {location.state?.registered && <p className="success-message" role="status">Your account is ready. Sign in to book your first visit.</p>}
 
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
 
         <label htmlFor="email">Email</label>
         <input
           id="email"
           type="email"
           name="email"
+          autoComplete="email"
+          placeholder="you@example.com"
           value={form.email}
           onChange={handleChange}
           required
         />
 
-        <label htmlFor="password">Password</label>
+        <div className="password-label"><label htmlFor="password">Password</label>
+          <button className="password-toggle" type="button" aria-pressed={showPassword} aria-controls="password" onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide" : "Show"}</button>
+        </div>
         <input
           id="password"
-          type="password"
+          type={showPassword ? "text" : "password"}
+          autoComplete="current-password"
           name="password"
           value={form.password}
           onChange={handleChange}
@@ -79,6 +88,6 @@ console.log("Password length:", form.password.length);
           Don't have an account? <Link to="/register">Register</Link>
         </p>
       </form>
-    </div>
+    </main>
   );
 }

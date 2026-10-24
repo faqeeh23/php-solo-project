@@ -1,0 +1,10 @@
+# Local credentials and generated dependencies/output
+.env
+.env.*
+!.env.example
+backend/config.local.php
+**/node_modules/
+**/dist/
+*.log
+
+.ui-review/

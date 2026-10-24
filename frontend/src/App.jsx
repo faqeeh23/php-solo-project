@@ -11,11 +11,13 @@ import Patient from "./pages/Patient";
 import Doctor from "./pages/Doctor";
 import Admin from "./pages/Admin";
 import ProtectedRoute from "./components/ProtectedRoute";
+import Layout from "./components/Layout";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route element={<Layout />}>
         <Route path="/" element={<Navigate to="/login" replace />} />
 
         <Route path="/login" element={<Login />} />
@@ -49,6 +51,7 @@ export default function App() {
         />
 
         <Route path="*" element={<Navigate to="/login" replace />} />
+              </Route>
       </Routes>
     </BrowserRouter>
   );

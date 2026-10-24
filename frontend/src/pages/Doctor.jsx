@@ -1,9 +1,14 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../services/api";
 import "../style/patient.css";
+import ConfirmButton from "../components/ConfirmButton";
+import AppointmentTools from "../components/AppointmentTools";
+import { filterAppointments, formatDate } from "../utils/appointments";
 
 export default function Doctor() {
   const [appointments, setAppointments] = useState([]);
+  const [filters, setFilters] = useState({ query: "", status: "all" });
+  const visibleAppointments = filterAppointments(appointments, filters);
   const [slots, setSlots] = useState([]);
   const [form, setForm] = useState({ slot_date: "", start_time: "", end_time: "" });
   const [saving, setSaving] = useState(false);
@@ -110,11 +115,13 @@ export default function Doctor() {
   const completed = appointments.filter(a => a.status === "completed").length;
 
   return (
-    <main className="patient-page">
+    <main className="patient-page doctor-dashboard">
       <header className="patient-header">
+        <span className="eyebrow">Doctor workspace</span>
         <h1>Doctor Dashboard</h1>
-        <p>Manage your patients and appointments</p>
+        <p>A clear view of your day. Set your availability and care for your patients.</p>
       </header>
+      <nav className="dashboard-shortcuts" aria-label="Dashboard sections"><a href="#add-slot">Add availability <span aria-hidden="true">↗</span></a><a href="#appointments">Appointments <span aria-hidden="true">↗</span></a><a href="#my-slots">My schedule <span aria-hidden="true">↗</span></a></nav>
 
       {message && <p role="status" className="success-message">{message}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
@@ -145,8 +152,9 @@ export default function Doctor() {
         </div>
       </section>
 
-          <section className="patient-section">
+          <section className="patient-section" id="add-slot">
             <h2>Add Available Slot</h2>
+            <p className="section-description">Make time for your patients. New availability is ready to book immediately.</p>
 
             <form className="booking-form" onSubmit={handleAddSlot}>
               <label htmlFor="slot_date">Date</label>
@@ -172,6 +180,7 @@ export default function Doctor() {
               <label htmlFor="end_time">End Time</label>
               <input
                 id="end_time"
+                min={form.start_time || undefined}
                 type="time"
                 name="end_time"
                 value={form.end_time}
@@ -185,7 +194,7 @@ export default function Doctor() {
             </form>
           </section>
 
-      <section className="patient-section">
+      <section className="patient-section" id="my-slots">
         <h2>My Slots</h2>
         <p>You can remove future slots that have no booking history.</p>
         {loading ? <p>Loading slots...</p> : slots.length === 0 ? <p>No slots found.</p> : (
@@ -193,31 +202,33 @@ export default function Doctor() {
             {slots.map(slot => (
               <article className="appointment-card" key={slot.id}>
                 <div>
-                  <h3>{slot.slot_date}</h3>
+                  <h3>{formatDate(slot.slot_date)}</h3>
                   <p>{slot.start_time.slice(0, 5)} - {slot.end_time.slice(0, 5)}</p>
-                  <span className="status">{Number(slot.is_booked) ? "Booked" : "Unbooked"}</span>
+                  <span className="status">{Number(slot.is_booked) ? "Booked" : new Date(slot.slot_date + "T" + slot.start_time) > new Date() ? "Available" : "Past slot"}</span>
                 </div>
                 {Number(slot.can_delete) === 1 && (
-                  <button className="cancel-btn" disabled={deletingId !== null}
-                    onClick={() => removeSlot(slot.id)}>Remove Slot</button>
+                  <ConfirmButton className="cancel-btn" disabled={deletingId !== null}
+                    confirmation="Remove this available time?" onConfirm={() => removeSlot(slot.id)}>{deletingId === slot.id ? "Removing..." : "Remove Slot"}</ConfirmButton>
                 )}
               </article>
             ))}
           </div>
         )}
       </section>
-      <section className="patient-section">
+      <section className="patient-section" id="appointments">
         <h2>My Appointments</h2>
+        <p className="section-description">Find your visits by name, service or date.</p>
+        <AppointmentTools filters={filters} onChange={setFilters} count={visibleAppointments.length} disabled={loading} />
 
         {loading ? (
           <p>Loading appointments...</p>
-        ) : appointments.length === 0 ? (
-          <p>No appointments found.</p>
+        ) : visibleAppointments.length === 0 ? (
+          <div className="empty-state"><span aria-hidden="true">＋</span><h3>{appointments.length ? "No matching appointments" : "A little breathing room"}</h3><p>{appointments.length ? "Try another search or clear your filters." : "Appointments will appear here once a patient books a visit."}</p></div>
         ) : (
           <div className="appointment-list">
-            {appointments.map(appointment => {
-              const start = `${appointment.slot_date}T${appointment.start_time}`;
-              const end = `${appointment.slot_date}T${appointment.end_time}`;
+            {visibleAppointments.map(appointment => {
+              const start = `${formatDate(appointment.slot_date)}T${appointment.start_time}`;
+              const end = `${formatDate(appointment.slot_date)}T${appointment.end_time}`;
 
               const canConfirm =
                 appointment.status === "pending" &&
@@ -232,7 +243,7 @@ export default function Doctor() {
                   <div>
                     <h3>{appointment.patient_name}</h3>
                     <p>Service: {appointment.service_name}</p>
-                    <p>Date: {appointment.slot_date}</p>
+                    <p>Date: {formatDate(appointment.slot_date)}</p>
                     <p>
                       Time: {appointment.start_time.slice(0, 5)}
                       {" - "}

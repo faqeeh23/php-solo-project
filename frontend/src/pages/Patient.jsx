@@ -2,11 +2,16 @@
 import { useEffect, useState, useCallback } from "react";
 import { apiRequest } from "../services/api";
 import "../style/patient.css";
+import ConfirmButton from "../components/ConfirmButton";
+import AppointmentTools from "../components/AppointmentTools";
+import { filterAppointments, formatDate } from "../utils/appointments";
 
 export default function Patient() {
   const [services, setServices] = useState([]);
   const [slots, setSlots] = useState([]);
   const [appointments, setAppointments] = useState([]);
+  const [filters, setFilters] = useState({ query: "", status: "all" });
+  const visibleAppointments = filterAppointments(appointments, filters);
 
   const [form, setForm] = useState({
     service_id: "",
@@ -46,7 +51,6 @@ export default function Patient() {
 
     if (slotsResult.status === "fulfilled") {
       setSlots(slotsResult.value);
-      console.log("Available Slots:", slotsResult.value);
     } else {
       console.error("Slots Error:", slotsResult.reason);
       errors.push("Could not load available appointments.");
@@ -149,20 +153,22 @@ export default function Patient() {
     );
 
     const appointmentDate = new Date(
-      `${appointment.slot_date}T${appointment.start_time}`
+      `${formatDate(appointment.slot_date)}T${appointment.start_time}`
     );
 
     return validStatus && appointmentDate > new Date();
   }
 
   return (
-    <main className="patient-page">
+    <main className="patient-page patient-dashboard">
       <header className="patient-header">
+        <span className="eyebrow">Patient workspace</span>
         <div>
           <h1>Patient Dashboard</h1>
-          <p>Manage your dental appointments</p>
+          <p>Your next healthy smile starts here. Book a visit and keep track of your care.</p>
         </div>
       </header>
+      <nav className="dashboard-shortcuts" aria-label="Dashboard sections"><a href="#book-appointment">Book a visit <span aria-hidden="true">↗</span></a><a href="#appointments">My appointments <span aria-hidden="true">↗</span></a><a href="#services">Explore services <span aria-hidden="true">↗</span></a></nav>
 
       {message && (
         <p className="success-message" role="status">
@@ -179,7 +185,7 @@ export default function Patient() {
       {fetching && <p>Loading appointments...</p>}
 
       {/* Dental Services */}
-      <section className="patient-section">
+      <section className="patient-section" id="services">
         <h2>Our Dental Services</h2>
 
         <div className="service-grid">
@@ -187,7 +193,10 @@ export default function Patient() {
             <article className="service-card" key={service.id}>
               <h3>{service.name}</h3>
               <p>{service.duration_minutes} minutes</p>
-              <strong>{service.price} JOD</strong>
+              <strong>{Number(service.price).toFixed(2)} <small>JOD</small></strong>
+              <button type="button" className="service-select" disabled={loading || fetching} onClick={() => { setForm({ service_id: String(service.id), slot_id: "" }); document.getElementById("book-appointment")?.scrollIntoView({ behavior: "smooth" }); }}>
+                {String(service.id) === form.service_id ? "Selected ✓" : "Choose this service →"}
+              </button>
             </article>
           ))}
         </div>
@@ -198,14 +207,16 @@ export default function Patient() {
       </section>
 
       {/* Book Appointment */}
-      <section className="patient-section">
+      <section className="patient-section" id="book-appointment">
         <h2>Book an Appointment</h2>
+        <p className="section-description">Choose your service first. We’ll show times that fit your visit.</p>
 
         <form className="booking-form" onSubmit={handleBook}>
           <label htmlFor="service">Select Service</label>
 
           <select
             id="service"
+            disabled={fetching || loading}
             value={form.service_id}
             onChange={e =>
               setForm({
@@ -235,7 +246,7 @@ export default function Patient() {
                 slot_id: e.target.value
               }))
             }
-            disabled={!form.service_id || fetching}
+            disabled={!form.service_id || fetching || loading}
             required
           >
             <option value="">Choose an available time</option>
@@ -255,6 +266,7 @@ export default function Patient() {
             </p>
           )}
 
+          {selectedService && <div className="booking-summary"><span>Your visit</span><strong>{selectedService.name}</strong><p>{selectedService.duration_minutes} minutes · {Number(selectedService.price).toFixed(2)} JOD</p></div>}
           <button
             type="submit"
             disabled={
@@ -270,14 +282,16 @@ export default function Patient() {
       </section>
 
       {/* My Appointments */}
-      <section className="patient-section">
+      <section className="patient-section" id="appointments">
         <h2>My Appointments</h2>
+        <p className="section-description">Find your visits by name, service or date.</p>
+        <AppointmentTools filters={filters} onChange={setFilters} count={visibleAppointments.length} disabled={fetching} />
 
-        {appointments.length === 0 ? (
-          <p>No appointments yet.</p>
+        {fetching ? <p className="loading-state" role="status">Loading your appointments...</p> : visibleAppointments.length === 0 ? (
+          <div className="empty-state"><span aria-hidden="true">＋</span><h3>{appointments.length ? "No matching appointments" : "Your next visit starts here"}</h3><p>{appointments.length ? "Try another search or clear your filters." : "Choose a service and an available time for your first appointment."}</p><a href="#book-appointment">Find an appointment →</a></div>
         ) : (
           <div className="appointment-list">
-            {appointments.map(appointment => (
+            {visibleAppointments.map(appointment => (
               <article
                 className="appointment-card"
                 key={appointment.id}
@@ -288,7 +302,7 @@ export default function Patient() {
                   <p>Doctor: {appointment.doctor_name}</p>
 
                   <p>
-                    Date: {appointment.slot_date}
+                    Date: {formatDate(appointment.slot_date)}
                   </p>
 
                   <p>
@@ -305,16 +319,16 @@ export default function Patient() {
                 </div>
 
                 {canCancel(appointment) && (
-                  <button
+                  <ConfirmButton
                     type="button"
                     className="cancel-btn"
-                    disabled={cancellingId === appointment.id}
-                    onClick={() => handleCancel(appointment.id)}
+                    disabled={cancellingId !== null}
+                    confirmation="Cancel this appointment?" onConfirm={() => handleCancel(appointment.id)}
                   >
                     {cancellingId === appointment.id
                       ? "Cancelling..."
                       : "Cancel Appointment"}
-                  </button>
+                  </ConfirmButton>
                 )}
               </article>
             ))}

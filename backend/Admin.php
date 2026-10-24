@@ -7,6 +7,22 @@ class Admin {
         $this->conn = $conn;
     }
 
+    public function addDoctor(string $name, string $email, string $password): bool {
+        $name = trim($name);
+        $email = trim($email);
+        if ($name === "" || mb_strlen($name) > 100 || strlen($email) > 150
+            || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($password) < 8 || strlen($password) > 72) {
+            throw new InvalidArgumentException("Enter a name, a valid email, and a password of 8 to 72 bytes");
+        }
+        $stmt = $this->conn->prepare("INSERT INTO users (name, email, password, role)
+            VALUES (:name, :email, :password, 'doctor')");
+        return $stmt->execute([
+            "name" => $name,
+            "email" => $email,
+            "password" => password_hash($password, PASSWORD_DEFAULT)
+        ]);
+    }
+
     public function getDoctors(): array {
         $sql = "SELECT id, name, email
                 FROM users

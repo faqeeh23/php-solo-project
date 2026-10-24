@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { apiRequest } from "../services/api";
+import AuthIntro from "../components/AuthIntro";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -14,6 +15,7 @@ export default function Register() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   function handleChange(e) {
     setForm(prev => ({
@@ -35,7 +37,7 @@ export default function Register() {
 
     try {
       await apiRequest("register", "POST", form);
-      navigate("/login");
+      navigate("/login", { state: { registered: true } });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -44,18 +46,23 @@ export default function Register() {
   }
 
   return (
-    <div className="auth-page">
+    <main className="auth-page">
+      <AuthIntro />
       <form className="auth-card" onSubmit={handleSubmit}>
+        <span className="eyebrow">Start with a smile</span>
         <h1>Create Account</h1>
         <p>Join us and book your dental appointment.</p>
 
-        {error && <p className="error">{error}</p>}
+        {error && <p className="error" role="alert">{error}</p>}
 
         <label htmlFor="name">Full Name</label>
         <input
           id="name"
           type="text"
           name="name"
+          autoComplete="name"
+          maxLength={100}
+          placeholder="Your full name"
           value={form.name}
           onChange={handleChange}
           required
@@ -66,15 +73,20 @@ export default function Register() {
           id="email"
           type="email"
           name="email"
+          autoComplete="email"
+          placeholder="you@example.com"
           value={form.email}
           onChange={handleChange}
           required
         />
 
-        <label htmlFor="password">Password</label>
+        <div className="password-label"><label htmlFor="password">Password</label>
+          <button className="password-toggle" type="button" aria-pressed={showPassword} aria-controls="password" onClick={() => setShowPassword(value => !value)}>{showPassword ? "Hide" : "Show"}</button>
+        </div>
         <input
           id="password"
-          type="password"
+          type={showPassword ? "text" : "password"}
+          autoComplete="new-password"
           name="password"
           value={form.password}
           onChange={handleChange}
@@ -82,6 +94,7 @@ export default function Register() {
           required
         />
 
+        <p className="field-hint">At least 8 characters. Your account is for booking patient appointments.</p>
         <button type="submit" disabled={loading}>
           {loading ? "Creating account..." : "Register"}
         </button>
@@ -90,6 +103,6 @@ export default function Register() {
           Already have an account? <Link to="/login">Login</Link>
         </p>
       </form>
-    </div>
+    </main>
   );
 }
