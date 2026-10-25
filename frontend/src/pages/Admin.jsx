@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../services/api";
 import "../style/patient.css";
+import DoctorResults from "../components/DoctorResults";
 import ConfirmButton from "../components/ConfirmButton";
 import AppointmentTools from "../components/AppointmentTools";
 import { filterAppointments, formatDate } from "../utils/appointments";
@@ -132,7 +133,7 @@ export default function Admin() {
         <h1>Admin Dashboard</h1>
         <p>Keep your practice moving. Manage your team and oversee every appointment.</p>
       </header>
-      <nav className="dashboard-shortcuts" aria-label="Dashboard sections"><a href="#add-doctor">Add a doctor <span aria-hidden="true">↗</span></a><a href="#appointments">Appointments <span aria-hidden="true">↗</span></a><a href="#doctors">Our team <span aria-hidden="true">↗</span></a></nav>
+      <nav className="dashboard-shortcuts" aria-label="Dashboard sections"><a href="#add-doctor">Add a doctor <span aria-hidden="true">↗</span></a><a href="#appointments">Appointments <span aria-hidden="true">↗</span></a><a href="#doctors">Our team <span aria-hidden="true">↗</span></a><a href="#doctor-results">Doctor results <span aria-hidden="true">↗</span></a></nav>
 
       {message && <p className="success-message" role="status">{message}</p>}
       {error && <p className="error-message" role="alert">{error}</p>}
@@ -215,6 +216,10 @@ export default function Admin() {
             )}
           </section>
 
+          <DoctorResults doctors={doctors} appointments={appointments} onView={(id, from, to) => {
+            setSelectedDoctor(id); setFromDate(from); setToDate(to); setFilters({ query: "", status: "all" }); setVisibleCount(8);
+            document.getElementById("appointments")?.scrollIntoView({ behavior: "smooth" });
+          }} />
           <section className="patient-section" id="appointments">
             <h2>All Appointments</h2>
         <p className="section-description">Find your visits by name, service or date.</p>

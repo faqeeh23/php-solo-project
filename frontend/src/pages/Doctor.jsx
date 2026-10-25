@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiRequest } from "../services/api";
 import "../style/patient.css";
+import DoctorFinancialSummary from "../components/DoctorFinancialSummary";
 import ConfirmButton from "../components/ConfirmButton";
 import AppointmentTools from "../components/AppointmentTools";
 import { filterAppointments, formatDate } from "../utils/appointments";
@@ -174,7 +175,7 @@ export default function Doctor() {
         <h1>Doctor Dashboard</h1>
         <p>A clear view of your day. Set your availability and care for your patients.</p>
       </header>
-      <nav className="dashboard-shortcuts" aria-label="Dashboard sections"><a href="#add-slot">Add availability <span aria-hidden="true">↗</span></a><a href="#appointments">Appointments <span aria-hidden="true">↗</span></a><a href="#my-slots">My schedule <span aria-hidden="true">↗</span></a><a href="#clinic-services">Services <span aria-hidden="true">↗</span></a></nav>
+      <nav className="dashboard-shortcuts" aria-label="Dashboard sections"><a href="#add-slot">Add availability <span aria-hidden="true">↗</span></a><a href="#appointments">Appointments <span aria-hidden="true">↗</span></a><a href="#my-slots">My schedule <span aria-hidden="true">↗</span></a><a href="#clinic-services">Services <span aria-hidden="true">↗</span></a><a href="#my-financials">My financials <span aria-hidden="true">↗</span></a></nav>
 
       {message && <p role="status" className="success-message">{message}</p>}
       {error && <p role="alert" className="error-message">{error}</p>}
@@ -282,6 +283,7 @@ export default function Doctor() {
           </div>
         )}
       </section>
+      <DoctorFinancialSummary appointments={appointments} loading={loading} />
       <section className="patient-section" id="clinic-services">
         <h2>Clinic Services</h2>
         <p className="section-description">Add a service to the clinic’s shared catalogue. Services are available across all doctors; patients see times that fit the selected duration.</p>

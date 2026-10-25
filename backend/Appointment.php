@@ -126,7 +126,7 @@ class Appointment {
 public function getByDoctor(int $doctorId): array {
     $sql = "SELECT a.id, a.status,
                    p.name AS patient_name,
-                   sv.name AS service_name,
+                   sv.name AS service_name, sv.price AS service_price,
                    s.slot_date, s.start_time, s.end_time
             FROM appointments a
             JOIN users p ON p.id = a.patient_id
