@@ -21,7 +21,17 @@ class Appointment {
                   )
                 ORDER BY s.slot_date, s.start_time";
 
-                return $this->conn->query($sql)->fetchAll();
+                return $this->withSlotTimestamps($this->conn->query($sql)->fetchAll());
+    }
+
+    public function addService(string $name, int $duration, string $price): bool {
+        $name = trim($name);
+        if ($name === "" || mb_strlen($name) > 100 || $duration < 1 || $duration > 1440
+            || !preg_match('/^\d{1,6}(\.\d{1,2})?$/', $price)) {
+            throw new InvalidArgumentException("Enter a service name, duration of 1–1440 minutes, and price from 0 to 999999.99 with at most 2 decimals");
+        }
+        $stmt = $this->conn->prepare("INSERT INTO services (name, duration_minutes, price) VALUES (:name, :duration, :price)");
+        return $stmt->execute(["name" => $name, "duration" => $duration, "price" => $price]);
     }
 
     public function getServices(): array {
@@ -89,7 +99,7 @@ class Appointment {
         $stmt = $this->conn->prepare($sql);
         $stmt->execute(["patient_id" => $patientId]);
 
-        return $stmt->fetchAll();
+        return $this->withSlotTimestamps($stmt->fetchAll());
     }
 
     public function cancel(int $appointmentId, int $patientId): bool {
@@ -128,7 +138,7 @@ public function getByDoctor(int $doctorId): array {
     $stmt = $this->conn->prepare($sql);
     $stmt->execute(["doctor_id" => $doctorId]);
 
-    return $stmt->fetchAll();
+    return $this->withSlotTimestamps($stmt->fetchAll());
 }
 
 public function updateDoctorStatus(
@@ -243,6 +253,15 @@ public function updateDoctorStatus(
     }
 
 
+    private function withSlotTimestamps(array $rows): array {
+        foreach ($rows as &$row) {
+            $row["starts_at"] = (new DateTimeImmutable($row["slot_date"] . " " . $row["start_time"]))->format(DATE_ATOM);
+            $row["ends_at"] = (new DateTimeImmutable($row["slot_date"] . " " . $row["end_time"]))->format(DATE_ATOM);
+        }
+        unset($row);
+        return $rows;
+    }
+
     public function getDoctorSlots(int $doctorId): array {
         $stmt = $this->conn->prepare("SELECT s.id, s.slot_date, s.start_time, s.end_time,
             EXISTS (SELECT 1 FROM appointments a WHERE a.slot_id = s.id AND a.status <> 'cancelled') AS is_booked,
@@ -251,7 +270,7 @@ public function updateDoctorStatus(
             FROM appointment_slots s WHERE s.doctor_id = :doctor_id
             ORDER BY s.slot_date DESC, s.start_time DESC");
         $stmt->execute(["doctor_id" => $doctorId]);
-        return $stmt->fetchAll();
+        return $this->withSlotTimestamps($stmt->fetchAll());
     }
 
     public function deleteDoctorSlot(int $slotId, int $doctorId): bool {

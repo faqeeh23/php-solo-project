@@ -11,7 +11,23 @@ export default function Admin() {
   const [creatingDoctor, setCreatingDoctor] = useState(false);
   const [appointments, setAppointments] = useState([]);
   const [filters, setFilters] = useState({ query: "", status: "all" });
-  const visibleAppointments = filterAppointments(appointments, filters);
+  const [doctorQuery, setDoctorQuery] = useState("");
+  const [selectedDoctor, setSelectedDoctor] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [sortOrder, setSortOrder] = useState("asc");
+  const [visibleCount, setVisibleCount] = useState(8);
+  const [editingDoctor, setEditingDoctor] = useState(null);
+  const [savingDoctor, setSavingDoctor] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const visibleDoctors = doctors.filter(d => (d.name + " " + d.email).toLowerCase().includes(doctorQuery.trim().toLowerCase()));
+  const dateRangeInvalid = !!(fromDate && toDate && fromDate > toDate);
+  const visibleAppointments = filterAppointments(appointments, filters)
+    .filter(a => !dateRangeInvalid && (!selectedDoctor || String(a.doctor_id) === selectedDoctor)
+      && (!fromDate || a.slot_date >= fromDate) && (!toDate || a.slot_date <= toDate))
+    .sort((a, b) => (sortOrder === "asc" ? 1 : -1) * (a.slot_date + a.start_time).localeCompare(b.slot_date + b.start_time));
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Amman" }).format(new Date());
+  const todaysAppointments = appointments.filter(a => a.slot_date === today && a.status !== "cancelled").length;
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState(null);
   const [error, setError] = useState("");
@@ -62,6 +78,25 @@ export default function Admin() {
     }
   }
 
+  async function refresh() {
+    setRefreshing(true); setError("");
+    try { await loadData(); } catch (err) { setError(err.message); }
+    finally { setRefreshing(false); }
+  }
+  async function saveDoctor(event) {
+    event.preventDefault(); setSavingDoctor(true); setError(""); setMessage("");
+    try {
+      await apiRequest("admin-edit-doctor", "POST", { doctor_id: editingDoctor.id, name: editingDoctor.name, email: editingDoctor.email });
+      setEditingDoctor(null);
+      setMessage("Doctor profile updated. Their email is also their sign-in address.");
+      await loadData();
+    } catch (err) { setError(err.message); }
+    finally { setSavingDoctor(false); }
+  }
+  function resetAppointmentFilters() {
+    setFilters({ query: "", status: "all" }); setSelectedDoctor(""); setFromDate(""); setToDate(""); setSortOrder("asc"); setVisibleCount(8);
+  }
+
   async function updateStatus(id, status) {
     setError("");
     setMessage("");
@@ -107,14 +142,15 @@ export default function Admin() {
       ) : (
         <>
           <section className="patient-section">
-            <h2>Overview</h2>
+            <div className="admin-section-heading"><div><h2>Overview</h2><p className="section-description">Today’s visits use the clinic timezone (Amman).</p></div><button type="button" className="admin-secondary" onClick={refresh} disabled={refreshing || creatingDoctor || savingDoctor || updatingId !== null}>{refreshing ? "Refreshing..." : "Refresh data"}</button></div>
 
             <div className="service-grid">
               {[
                 ["Doctors", doctors.length],
                 ["Appointments", appointments.length],
                 ["Pending", pending],
-                ["Confirmed", confirmed]
+                ["Confirmed", confirmed],
+                ["Today’s visits", todaysAppointments]
               ].map(([label, value]) => (
                 <article className="service-card" key={label}>
                   <h3>{label}</h3>
@@ -146,18 +182,33 @@ export default function Admin() {
           </section>
 
           <section className="patient-section" id="doctors">
-            <h2>Doctors</h2>
+            <div className="admin-section-heading"><h2>Doctors</h2><span>{visibleDoctors.length} of {doctors.length} doctors</span></div>
+            <label className="sr-only" htmlFor="doctor-search">Search doctors</label>
+            <input className="admin-search" id="doctor-search" type="search" placeholder="Search doctors by name or email..." value={doctorQuery} onChange={e => setDoctorQuery(e.target.value)} />
 
-            {doctors.length === 0 ? (
-              <p>No doctors found.</p>
+            {visibleDoctors.length === 0 ? (
+              <p>{doctors.length ? "No doctors match your search." : "Add your first doctor using the form above."}</p>
             ) : (
               <div className="appointment-list">
-                {doctors.map(doctor => (
+                {visibleDoctors.map(doctor => (
                   <article className="appointment-card" key={doctor.id}>
-                    <div>
-                      <h3>{doctor.name}</h3>
-                      <p>{doctor.email}</p>
-                    </div>
+                    {editingDoctor?.id === doctor.id ? (
+                      <form className="booking-form doctor-edit-form" onSubmit={saveDoctor}>
+                        <h3>Edit doctor</h3>
+                        <label htmlFor="edit-doctor-name">Full name</label>
+                        <input id="edit-doctor-name" value={editingDoctor.name} maxLength={100} required disabled={savingDoctor} onChange={e => setEditingDoctor({ ...editingDoctor, name: e.target.value })} />
+                        <label htmlFor="edit-doctor-email">Email / sign-in address</label>
+                        <input id="edit-doctor-email" type="email" value={editingDoctor.email} maxLength={150} required disabled={savingDoctor} onChange={e => setEditingDoctor({ ...editingDoctor, email: e.target.value })} />
+                        <small>Changing the email also changes how this doctor signs in.</small>
+                        <div className="admin-edit-actions"><button className="admin-primary" disabled={savingDoctor}>{savingDoctor ? "Saving..." : "Save changes"}</button><button className="admin-secondary" type="button" disabled={savingDoctor} onClick={() => setEditingDoctor(null)}>Cancel editing</button></div>
+                      </form>
+                    ) : (
+                      <div className="doctor-profile">
+                        <h3>{doctor.name}</h3><p>{doctor.email}</p>
+                        <div className="doctor-workload"><span><strong>{doctor.available_slots}</strong> available slots</span><span><strong>{doctor.upcoming_appointments}</strong> upcoming visits</span></div>
+                        <button type="button" className="admin-secondary" disabled={savingDoctor} onClick={() => setEditingDoctor({ id: doctor.id, name: doctor.name, email: doctor.email })}>Edit profile</button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>
@@ -167,13 +218,21 @@ export default function Admin() {
           <section className="patient-section" id="appointments">
             <h2>All Appointments</h2>
         <p className="section-description">Find your visits by name, service or date.</p>
-        <AppointmentTools filters={filters} onChange={setFilters} count={visibleAppointments.length} disabled={loading} />
+        <AppointmentTools filters={filters} onChange={next => { setFilters(next); setVisibleCount(8); }} count={visibleAppointments.length} disabled={loading} />
+        <div className="admin-appointment-filters">
+          <label>Doctor<select value={selectedDoctor} onChange={e => { setSelectedDoctor(e.target.value); setVisibleCount(8); }}><option value="">All doctors</option>{doctors.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}</select></label>
+          <label>From date<input type="date" value={fromDate} onChange={e => { setFromDate(e.target.value); setVisibleCount(8); }} /></label>
+          <label>To date<input type="date" value={toDate} min={fromDate || undefined} onChange={e => { setToDate(e.target.value); setVisibleCount(8); }} /></label>
+          <label>Sort by<select value={sortOrder} onChange={e => setSortOrder(e.target.value)}><option value="asc">Oldest first</option><option value="desc">Newest first</option></select></label>
+          <button type="button" className="admin-secondary" onClick={resetAppointmentFilters}>Reset all filters</button>
+        </div>
+        {dateRangeInvalid && <p className="error-message" role="alert">The end date must be on or after the start date.</p>}
 
             {visibleAppointments.length === 0 ? (
               <div className="empty-state"><span aria-hidden="true">＋</span><h3>{appointments.length ? "No matching appointments" : "A little breathing room"}</h3><p>{appointments.length ? "Try another search or clear your filters." : "Appointments will appear here once a patient books a visit."}</p></div>
             ) : (
               <div className="appointment-list">
-                {visibleAppointments.map(appointment => (
+                {visibleAppointments.slice(0, visibleCount).map(appointment => (
                   <article className="appointment-card" key={appointment.id}>
                     <div>
                       <h3>{appointment.patient_name}</h3>
@@ -206,6 +265,7 @@ export default function Admin() {
                 ))}
               </div>
             )}
+            {visibleAppointments.length > visibleCount && <div className="admin-more"><p>Showing {visibleCount} of {visibleAppointments.length} appointments</p><button type="button" className="admin-secondary" onClick={() => setVisibleCount(count => count + 8)}>Show 8 more</button></div>}
           </section>
         </>
       )}

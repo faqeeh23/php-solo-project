@@ -8,6 +8,20 @@ import { filterAppointments, formatDate } from "../utils/appointments";
 
 export default function Patient() {
   const [services, setServices] = useState([]);
+  const [bookingDay, setBookingDay] = useState("today");
+  const [bookingDate, setBookingDate] = useState("");
+  const [now, setNow] = useState(() => Date.now());
+  const dayParts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Amman", year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(now));
+  const part = key => dayParts.find(p => p.type === key).value;
+  const today = part("year") + "-" + part("month") + "-" + part("day");
+  const tomorrowDate = new Date(today + "T12:00:00Z");
+  tomorrowDate.setUTCDate(tomorrowDate.getUTCDate() + 1);
+  const tomorrow = tomorrowDate.toISOString().slice(0, 10);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(timer);
+  }, []);
   const [slots, setSlots] = useState([]);
   const [appointments, setAppointments] = useState([]);
   const [filters, setFilters] = useState({ query: "", status: "all" });
@@ -85,7 +99,7 @@ export default function Patient() {
   async function handleBook(e) {
     e.preventDefault();
 
-    if (!form.service_id || !form.slot_id) {
+    if (!form.service_id || !selectedSlot) {
       setError("Please select a service and appointment time.");
       return;
     }
@@ -138,6 +152,7 @@ export default function Patient() {
 
   // Only display slots that fit the selected service duration
   const availableSlots = slots.filter(slot => {
+    if (new Date(slot.starts_at || slot.slot_date + "T" + slot.start_time).getTime() <= now) return false;
     if (!selectedService) return true;
 
     const duration =
@@ -146,6 +161,15 @@ export default function Patient() {
     return duration >= Number(selectedService.duration_minutes);
   });
 
+  const targetDate = bookingDay === "today" ? today : bookingDay === "tomorrow" ? tomorrow : bookingDate;
+  const daySlots = availableSlots.filter(slot => bookingDay === "all" || slot.slot_date === targetDate)
+    .sort((a, b) => (a.slot_date + a.start_time).localeCompare(b.slot_date + b.start_time));
+  const selectedSlot = daySlots.find(slot => String(slot.id) === form.slot_id);
+  function changeBookingDay(day) {
+    setBookingDay(day);
+    setForm(previous => ({ ...previous, slot_id: "" }));
+  }
+
   // Check whether cancellation is allowed
   function canCancel(appointment) {
     const validStatus = ["pending", "confirmed"].includes(
@@ -153,7 +177,7 @@ export default function Patient() {
     );
 
     const appointmentDate = new Date(
-      `${formatDate(appointment.slot_date)}T${appointment.start_time}`
+      appointment.starts_at || `${appointment.slot_date}T${appointment.start_time}`
     );
 
     return validStatus && appointmentDate > new Date();
@@ -235,45 +259,36 @@ export default function Patient() {
             ))}
           </select>
 
-          <label htmlFor="slot">Select Doctor & Time</label>
-
-          <select
-            id="slot"
-            value={form.slot_id}
-            onChange={e =>
-              setForm(prev => ({
-                ...prev,
-                slot_id: e.target.value
-              }))
-            }
-            disabled={!form.service_id || fetching || loading}
-            required
-          >
-            <option value="">Choose an available time</option>
-
-            {availableSlots.map(slot => (
-              <option key={slot.id} value={slot.id}>
-                {slot.doctor_name} — {slot.slot_date} —{" "}
-                {slot.start_time.slice(0, 5)} to{" "}
-                {slot.end_time.slice(0, 5)}
-              </option>
+          <div className="booking-day-picker" role="group" aria-label="Choose appointment day">
+            {[["today", "Today", today], ["tomorrow", "Tomorrow", tomorrow], ["all", "Any day", null]].map(([key, title, date]) => (
+              <button key={key} type="button" aria-pressed={bookingDay === key} disabled={loading || fetching} onClick={() => changeBookingDay(key)}>
+                <strong>{title}</strong><span>{date ? formatDate(date) : "All upcoming dates"}</span><small>{fetching ? "Loading..." : availableSlots.filter(slot => !date || slot.slot_date === date).length + " available"}</small>
+              </button>
             ))}
-          </select>
+          </div>
+          <label htmlFor="booking-date">Or choose a date</label>
+          <input id="booking-date" type="date" min={today} value={bookingDate} disabled={loading || fetching} onChange={e => { setBookingDate(e.target.value); changeBookingDay(e.target.value ? "custom" : "today"); }} />
+          {!form.service_id && <p className="field-hint">Browse available times below. Select a service above to choose your appointment.</p>}
+          <fieldset className="booking-times" disabled={!form.service_id || loading || fetching}>
+            <legend>{bookingDay === "all" ? "Available appointments" : targetDate ? "Available times · " + formatDate(targetDate) : "Available times"}</legend>
+            {fetching ? <p role="status">Loading available times...</p> : daySlots.length ? <div className="time-option-grid">{daySlots.map(slot => (
+              <label className={"time-option" + (form.slot_id === String(slot.id) ? " is-selected" : "")} key={slot.id}>
+                <input type="radio" name="slot_id" value={slot.id} checked={form.slot_id === String(slot.id)} required onChange={() => setForm(previous => ({ ...previous, slot_id: String(slot.id) }))} />
+                <span><strong>{slot.start_time.slice(0, 5)} – {slot.end_time.slice(0, 5)}</strong><span>{slot.doctor_name}</span>{bookingDay === "all" && <small>{formatDate(slot.slot_date)}</small>}</span>
+              </label>
+            ))}</div> : <div className="booking-no-times"><strong>No available times {bookingDay === "today" ? "today" : bookingDay === "tomorrow" ? "tomorrow" : "for this selection"}.</strong><p>{availableSlots.length ? "Try another day to find a time that works for you." : "Please check back later for new availability."}</p></div>}
+          </fieldset>
+          {!fetching && daySlots.length === 0 && availableSlots.length > 0 && bookingDay !== "all" && <button className="browse-times-button" type="button" onClick={() => changeBookingDay("all")}>See next available times →</button>}
+          <p className="availability-note" role="status">{!fetching && daySlots.length + (daySlots.length === 1 ? " time available" : " times available")} · Clinic time (Amman)</p>
 
-          {form.service_id && availableSlots.length === 0 && (
-            <p className="error-message">
-              No available appointments for this service.
-            </p>
-          )}
-
-          {selectedService && <div className="booking-summary"><span>Your visit</span><strong>{selectedService.name}</strong><p>{selectedService.duration_minutes} minutes · {Number(selectedService.price).toFixed(2)} JOD</p></div>}
+          {selectedService && <div className="booking-summary"><span>Your visit</span><strong>{selectedService.name}</strong><p>{selectedService.duration_minutes} minutes · {Number(selectedService.price).toFixed(2)} JOD</p>{selectedSlot && <p><strong>{selectedSlot.doctor_name}</strong><br />{formatDate(selectedSlot.slot_date)} · {selectedSlot.start_time.slice(0, 5)} – {selectedSlot.end_time.slice(0, 5)}</p>}</div>}
           <button
             type="submit"
             disabled={
               loading ||
               fetching ||
               !form.service_id ||
-              !form.slot_id
+              !selectedSlot
             }
           >
             {loading ? "Booking..." : "Book Appointment"}

@@ -270,14 +270,24 @@ elseif ($action === "doctor-appointments" && $_SERVER["REQUEST_METHOD"] === "GET
 
     echo json_encode(["message" => "Appointment updated successfully"]);
 }
-elseif (in_array($action, ["doctor-add-slot", "doctor-slots", "doctor-delete-slot"], true)) {
+elseif (in_array($action, ["doctor-add-slot", "doctor-slots", "doctor-delete-slot", "doctor-add-service"], true)) {
     if (!isset($_SESSION["user_id"]) || ($_SESSION["role"] ?? "") !== "doctor") {
         http_response_code(403);
         echo json_encode(["error" => "Doctor access required"]);
         exit;
     }
     $doctorId = (int)$_SESSION["user_id"];
-    if ($action === "doctor-slots" && $_SERVER["REQUEST_METHOD"] === "GET") {
+    if ($action === "doctor-add-service" && $_SERVER["REQUEST_METHOD"] === "POST") {
+        $name = $input["name"] ?? null;
+        $duration = filter_var($input["duration_minutes"] ?? null, FILTER_VALIDATE_INT);
+        $price = $input["price"] ?? null;
+        if (!is_string($name) || !$duration || (!is_string($price) && !is_int($price) && !is_float($price))) {
+            throw new InvalidArgumentException("Invalid service data");
+        }
+        $appointmentModel->addService($name, $duration, (string)$price);
+        http_response_code(201);
+        echo json_encode(["message" => "Service added successfully"]);
+    } elseif ($action === "doctor-slots" && $_SERVER["REQUEST_METHOD"] === "GET") {
         echo json_encode($appointmentModel->getDoctorSlots($doctorId));
     } elseif ($action === "doctor-add-slot" && $_SERVER["REQUEST_METHOD"] === "POST") {
         $date = $input["slot_date"] ?? "";
@@ -316,6 +326,7 @@ elseif (
     in_array($action, [
         "admin-doctors",
         "admin-add-doctor",
+        "admin-edit-doctor",
         "admin-appointments",
         "admin-update"
     ], true)
@@ -329,7 +340,20 @@ elseif (
         exit;
     }
 
-    if ($action === "admin-add-doctor" && $_SERVER["REQUEST_METHOD"] === "POST") {
+    if ($action === "admin-edit-doctor" && $_SERVER["REQUEST_METHOD"] === "POST") {
+        $doctorId = filter_var($input["doctor_id"] ?? null, FILTER_VALIDATE_INT);
+        $name = $input["name"] ?? null;
+        $email = $input["email"] ?? null;
+        if (!$doctorId || $doctorId < 1 || !is_string($name) || !is_string($email)) {
+            throw new InvalidArgumentException("Invalid doctor data");
+        }
+        if (!$adminModel->updateDoctor($doctorId, $name, $email)) {
+            http_response_code(404);
+            echo json_encode(["error" => "Doctor not found"]);
+            exit;
+        }
+        echo json_encode(["message" => "Doctor profile updated successfully"]);
+    } elseif ($action === "admin-add-doctor" && $_SERVER["REQUEST_METHOD"] === "POST") {
         $name = $input["name"] ?? null;
         $email = $input["email"] ?? null;
         $password = $input["password"] ?? null;
@@ -393,9 +417,9 @@ elseif (
     if ($mysqlError === 1062) {
         http_response_code(409);
         echo json_encode([
-            "error" => in_array($action, ["register", "admin-add-doctor"], true)
+            "error" => in_array($action, ["register", "admin-add-doctor", "admin-edit-doctor"], true)
                 ? "Email already exists"
-                : "Slot already booked"
+                : ($action === "doctor-add-service" ? "Service name already exists" : "Slot already booked")
         ]);
     } else {
     http_response_code(500);

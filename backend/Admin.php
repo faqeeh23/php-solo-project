@@ -23,8 +23,30 @@ class Admin {
         ]);
     }
 
+    public function updateDoctor(int $doctorId, string $name, string $email): bool {
+        $name = trim($name);
+        $email = trim($email);
+        if ($name === "" || mb_strlen($name) > 100 || strlen($email) > 150 || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            throw new InvalidArgumentException("Enter a name and valid email address");
+        }
+        $stmt = $this->conn->prepare("SELECT name, email FROM users WHERE id = :id AND role = 'doctor'");
+        $stmt->execute(["id" => $doctorId]);
+        $doctor = $stmt->fetch();
+        if (!$doctor) { return false; }
+        if ($doctor["name"] === $name && $doctor["email"] === $email) { return true; }
+        $stmt = $this->conn->prepare("UPDATE users SET name = :name, email = :email WHERE id = :id AND role = 'doctor'");
+        $stmt->execute(["name" => $name, "email" => $email, "id" => $doctorId]);
+        return $stmt->rowCount() > 0;
+    }
+
     public function getDoctors(): array {
-        $sql = "SELECT id, name, email
+        $sql = "SELECT id, name, email,
+                    (SELECT COUNT(*) FROM appointment_slots s WHERE s.doctor_id = users.id
+                        AND TIMESTAMP(s.slot_date, s.start_time) > NOW()
+                        AND NOT EXISTS (SELECT 1 FROM appointments a WHERE a.slot_id = s.id AND a.status <> 'cancelled')) AS available_slots,
+                    (SELECT COUNT(*) FROM appointments a JOIN appointment_slots s ON s.id = a.slot_id
+                        WHERE s.doctor_id = users.id AND a.status IN ('pending', 'confirmed')
+                        AND TIMESTAMP(s.slot_date, s.start_time) > NOW()) AS upcoming_appointments
                 FROM users
                 WHERE role = 'doctor'
                 ORDER BY name";
@@ -33,7 +55,7 @@ class Admin {
     }
 
     public function getAppointments(): array {
-        $sql = "SELECT a.id, a.status,
+        $sql = "SELECT a.id, a.status, s.doctor_id,
                        p.name AS patient_name,
                        d.name AS doctor_name,
                        sv.name AS service_name,
